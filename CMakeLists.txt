@@ -1,5 +1,18 @@
 project(intercharts)
 
+include(FetchContent)
+FetchContent_Declare(HighLevelCMake
+    GIT_REPOSITORY https://github.com/JPGygax68/HighLevelCMake.git
+)
+FetchContent_Populate(HighLevelCMake)
+list(APPEND CMAKE_MODULE_PATH "${highlevelcmake_SOURCE_DIR}/cmake")
+include(HighLevelCMake) # TODO: cmake subdir probably unnecessary
+
+
+add_subdirectory(src)
+
+if (0)
+
 add_library(${PROJECT_NAME} INTERFACE)
 
 # TODO: create a ls-cmake function for interface libraries
@@ -10,7 +23,7 @@ set(public_headers chart.h)
 
 foreach(src ${sources})
     set(src_fp "${PROJECT_SOURCE_DIR}/src/${src}")
-    list(APPEND hdrs_fp "${src_fp}")
+    list(APPEND srcs_fp "${src_fp}")
     target_sources(${PROJECT_NAME} INTERFACE
         $<BUILD_INTERFACE:${src_fp}>
         $<INSTALL_INTERFACE:src/${PROJECT_NAME}/${src}>
@@ -52,7 +65,7 @@ install(EXPORT ${PROJECT_NAME}
     EXPORT_LINK_INTERFACE_LIBRARIES
 )
 
-install(FILES ${src_fp} ${hdr_fp} DESTINATION "src/${PROJECT_NAME}/")
+install(FILES ${srcs_fp} ${hdrs_fp} DESTINATION "src/${PROJECT_NAME}/")
 
 # Generate package configuration file (adapted from LSModule.cmake)
 
@@ -64,3 +77,5 @@ set(EXPORT_SET ${PROJECT_NAME})
 configure_file("${PROJECT_SOURCE_DIR}/config.in.cmake" "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake" @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake" DESTINATION "cmake/")
+
+endif()
