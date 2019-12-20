@@ -1,58 +1,92 @@
+#include <iostream>
 #include <imgui.h>
 #include <intercharts/bar_chart.h>
 
-void Bar_chart::renderValues()
+void Bar_chart::renderAndInteractWithValues()
 {
-  auto wdl = ImGui::GetWindowDrawList();
-  auto fdl = ImGui::GetForegroundDrawList();
-  auto &io = ImGui::GetIO();
+    using MI = Mouse_interaction;
 
-  int i_rect = 0;
-  for (const auto &plot_rect : bars)
-  {
+    auto wdl = ImGui::GetWindowDrawList();
+    auto fdl = ImGui::GetForegroundDrawList();
+    auto &io = ImGui::GetIO();
 
-    const auto rect = barToScreenRect(plot_rect);
-    const auto interaction_rects = getBarInteractionZoneRects(rect);
-
-    if (ImGui::IsItemActive())
+    int i_bar = 0;
+    for (const auto &bar : bars)
     {
-      const auto click_pos = io.MouseClickedPos[0];
-      if (!dragging)
-      {
-        for (auto i = 0U; i < interaction_rects.size(); i++)
+        const auto rect = barToScreenRect(bar);
+        const auto interaction_rects = getBarInteractionZoneRects(rect);
+
+        // Was there a click? (the "item" is the InvisibleButton representing the Chart)
+        if (ImGui::IsItemActive())
         {
-          // TODO: support disabling each zone
-          const auto &rect = interaction_rects[i];
-          if (screenRectContainsPos(rect, click_pos))
-            beginDragOperation(i_rect, (Bar_zone)(Bar_zone::Left_edge + i));
+            const auto click_pos = io.MouseClickedPos[0];
+            if (mouse_interaction == MI::Dragging_bar_zone) {
+                updateDragOperation();
+                fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
+            }
+            else if (mouse_interaction == MI::None) {
+                if (tryStartDragOperationOnExistingBar(i_bar, interaction_rects)) ;
+                // else if (...);
+            }
         }
-      }
-      if (dragging)
-      {
-        updateDragOperation();
-        fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
-      }
-    }
-    else
-    {
-      if (dragging)
-        endDragOperation();
-      const auto mouse_pos = io.MousePos;
-      for (auto i = 0U; i < interaction_rects.size(); i++)
-      {
-        // TODO: support disabling each zone
-        const auto &rect = interaction_rects[i];
-        if (screenRectContainsPos(rect, mouse_pos))
-          drawZoneHighlight(rect);
-      }
-    }
+        else
+        {
+            if      (mouse_interaction == MI::Dragging_bar_zone) endDragOperation();
+            else if (mouse_interaction == MI::Adding_new_bar   ) endAddNewBarOperation();
+            highlightHoveredInteractionZone(interaction_rects);
+        }
 
-    // TODO: visually support dragging operations
-    wdl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, i_rect == dragged_bar_index ? 0x800000FF : 0xFF0000FF);
+        drawBar(rect, i_bar == dragged_bar_index);
+
+        ++i_bar;
+    }
+}
+
+void Bar_chart::afterRenderingValues()
+{
+    using MI = Mouse_interaction;
+
+    if (mouse_interaction == MI::None) {
+        if (ImGui::IsItemActive()) {
+            beginAddNewBarOperation();
+        }
+    }
+    else if (mouse_interaction == MI::Adding_new_bar) {
+        updateAddNewBarOperation();
+    }
+}
+
+void Bar_chart::drawBar(const ImVec4& rect, bool dragging)
+{
+    auto wdl = ImGui::GetWindowDrawList();
+
+    wdl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, dragging ? 0x800000FF : 0xFF0000FF);
     wdl->AddRect({rect.x, rect.y}, {rect.z, rect.w}, 0xFFFFFFFF);
+}
 
-    ++i_rect;
-  }
+bool Bar_chart::tryStartDragOperationOnExistingBar(int i_rect, const Interaction_zone_list& zones)
+{
+    for (auto i = 0U; i < zones.size(); i++)
+    {
+        // TODO: support disabling each zone
+        const auto &rect = zones[i];
+        if (screenRectContainsPos(rect, ImGui::GetIO().MouseClickedPos[0])) {
+            beginDragOperation(i_rect, (Bar_zone)(Bar_zone::Left_edge + i));
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void Bar_chart::highlightHoveredInteractionZone(const Interaction_zone_list& zones)
+{
+    for (auto i = 0U; i < zones.size(); i++)
+    {
+        // TODO: support disabling each zone
+        const auto &rect = zones[i];
+        if (screenRectContainsPos(rect, ImGui::GetIO().MousePos)) drawZoneHighlight(rect);
+    }
 }
 
 void Bar_chart::beginDragOperation(int bar_index, Bar_zone zone)
@@ -80,7 +114,7 @@ void Bar_chart::beginDragOperation(int bar_index, Bar_zone zone)
         assert(false);
     }
 
-    dragging = true;
+    mouse_interaction = Mouse_interaction::Dragging_bar_zone;
     dragged_bar_index = bar_index;
     dragged_zone = zone;
 }
@@ -103,14 +137,14 @@ void Bar_chart::updateDragOperation()
         float delta_x = (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
         float delta_y = (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
 
-        float new_x = roundUnitsX(x_at_drag_start + delta_x);
-        float new_y = roundUnitsY(y_at_drag_start - delta_y);
+        float new_x = roundXValue(x_at_drag_start + delta_x);
+        float new_y = roundYValue(y_at_drag_start - delta_y);
 
         tryDragZoneTo(dragged_zone, new_x, new_y);
 
         // TODO: temporary, mostly for debugging -> replace
         fdl->AddText(nullptr, labelFontSize(), {mouse_pos.x + ds * 3, mouse_pos.y - ds * 2 - labelFontSize()}, 0xFFFFFFFF,
-            (formatFloat(new_x) + "," + formatFloat(new_y)).c_str());
+                     (formatFloat(new_x) + "," + formatFloat(new_y)).c_str());
     }
 }
 
@@ -118,9 +152,43 @@ void Bar_chart::endDragOperation()
 {
     // TODO: commit changed value
 
-    dragging = false;
+    mouse_interaction = Mouse_interaction::None;
     dragged_bar_index = -1;
     dragged_zone = Bar_zone::None;
+}
+
+void Bar_chart::beginAddNewBarOperation()
+{
+    mouse_interaction = Mouse_interaction::Adding_new_bar;
+}
+
+void Bar_chart::updateAddNewBarOperation()
+{
+    auto& io = ImGui::GetIO();
+
+    const auto click_pos = io.MouseClickedPos[0];
+    const auto mouse_pos = io.MousePos;
+
+    new_bar.x1 = roundXValue(screenToPlotUnitsX(mouse_pos.x < click_pos.x ? mouse_pos.x : click_pos.x));
+    new_bar.x2 = roundXValue(screenToPlotUnitsX(mouse_pos.x < click_pos.x ? click_pos.x : mouse_pos.x));
+    new_bar.y1 = roundYValue(screenToPlotUnitsY(mouse_pos.y > click_pos.y ? mouse_pos.y : click_pos.y));
+    new_bar.y2 = roundYValue(screenToPlotUnitsY(mouse_pos.y > click_pos.y ? click_pos.y : mouse_pos.y));
+    assert(new_bar.x1 <= new_bar.x2 && new_bar.y1 <= new_bar.y2);
+    std::cout << new_bar.x1 << "," << new_bar.x2 << "; " << new_bar.y1 << "," << new_bar.y2 << std::endl;
+
+    if (new_bar.x2 > new_bar.x1 && new_bar.y2 > new_bar.y1) {
+        float dummy_x = 0, dummy_y = 0;
+        /* if (bar_change_applier(new_bar, bars.size(), Bar_zone::None, dummy_x, dummy_y)) */ {
+            const auto rect = barToScreenRect(new_bar);
+            drawBar(rect, false);
+        }
+    }
+}
+
+void Bar_chart::endAddNewBarOperation()
+{
+    // TODO... ?
+    mouse_interaction = Mouse_interaction::None;
 }
 
 void Bar_chart::drawZoneHighlight(const ImVec4 &zone)
@@ -165,12 +233,12 @@ bool Bar_chart::tryDragZoneTo(Bar_zone zone, float &new_x, float &new_y)
     return false;
 }
 
-auto Bar_chart::roundUnitsX(float x) -> float
+auto Bar_chart::roundXValue(float x) -> float
 {
     return rounding_unit_x * round(x / rounding_unit_x);
 }
 
-auto Bar_chart::roundUnitsY(float y) -> float
+auto Bar_chart::roundYValue(float y) -> float
 {
     return rounding_unit_y * round(y / rounding_unit_y);
 }
@@ -179,24 +247,24 @@ auto Bar_chart::getBarInteractionZoneRects(const ImVec4 &rect) -> std::array<ImV
 {
     return std::array<ImVec4, 5>{
         leftEdgeRect(rect),
-            topEdgeRect(rect),
-            rightEdgeRect(rect),
-            bottomEdgeRect(rect),
-            interiorRect(rect),
+        topEdgeRect(rect),
+        rightEdgeRect(rect),
+        bottomEdgeRect(rect),
+        interiorRect(rect),
     };
 }
 
-auto Bar_chart::barToScreenRect(const Bar &rect) const -> ImVec4
+auto Bar_chart::barToScreenRect(const Bar &bar) const -> ImVec4
 {
     const auto &pa = plottingArea();
     auto ppux = pixelsPerUnitHorz();
     auto ppuy = pixelsPerUnitVert();
 
     return {
-        pa.x + rect.x1 * ppux, // x = left
-        pa.w - rect.y2 * ppuy, // y = top
-        pa.x + rect.x2 * ppux, // z = right
-        pa.w - rect.y1 * ppuy, // w = bottom
+        pa.x + bar.x1 * ppux, // x = left
+        pa.w - bar.y2 * ppuy, // y = top
+        pa.x + bar.x2 * ppux, // z = right
+        pa.w - bar.y1 * ppuy, // w = bottom
     };
 }
 

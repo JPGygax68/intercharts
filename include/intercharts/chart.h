@@ -27,10 +27,13 @@ public:
     auto labelFontSize() const { return dpi_scaling_factor * label_font_size; }
 
 protected:
-    virtual void renderValues() = 0;
+    virtual void renderAndInteractWithValues() = 0;
+    virtual void afterRenderingValues() {}
 
     auto plotToScreenUnitsX(float x) const -> float;
     auto plotToScreenUnitsY(float y) const -> float;
+    auto screenToPlotUnitsX(float x) const -> float;
+    auto screenToPlotUnitsY(float y) const -> float;
 
     static auto formatFloat(float val, int prec = 0) -> std::string
     {

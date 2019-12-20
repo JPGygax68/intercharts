@@ -23,7 +23,9 @@ void Chart::render(float w, float h, float dpi_scaling)
 
     drawGrid();
 
-    renderValues();
+    renderAndInteractWithValues();
+
+    afterRenderingValues();
 }
 
 void Chart::updateGeometry(float w, float h, float dpi_scaling)
@@ -101,5 +103,15 @@ auto Chart::plotToScreenUnitsX(float x) const -> float
 auto Chart::plotToScreenUnitsY(float y) const -> float
 {
     return plottingArea().w - y * pixelsPerUnitVert(); // TODO: support origin != (0, 0)
+}
+
+auto Chart::screenToPlotUnitsX(float x) const -> float
+{
+    return (x - plottingArea().x) / pixelsPerUnitHorz();
+}
+
+auto Chart::screenToPlotUnitsY(float y) const -> float
+{
+    return (plottingArea().w - y) / pixelsPerUnitVert();
 }
 
