@@ -28,7 +28,7 @@ public:
 
 protected:
     virtual void renderAndInteractWithValues() = 0;
-    virtual void afterRenderingValues() {}
+    // virtual void afterRenderingValues() {}
 
     auto plotToScreenUnitsX(float x) const -> float;
     auto plotToScreenUnitsY(float y) const -> float;

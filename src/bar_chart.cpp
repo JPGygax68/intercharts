@@ -9,6 +9,8 @@ void Bar_chart::renderAndInteractWithValues()
     auto fdl = ImGui::GetForegroundDrawList();
     auto &io = ImGui::GetIO();
 
+    const auto click_pos = io.MouseClickedPos[0];
+
     int bar_index = 0;
     for (const auto &bar : bars)
     {
@@ -18,18 +20,14 @@ void Bar_chart::renderAndInteractWithValues()
         // Was there a click? (the "item" is the InvisibleButton representing the Chart)
         if (ImGui::IsItemActive())
         {
-            const auto click_pos = io.MouseClickedPos[0];
             if (mouse_interaction == Mouse_interaction::Dragging_bar_edge) {
                 dragBarEdge();
-                fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
             }
             else if (mouse_interaction == Mouse_interaction::Dragging_bar_corner) {
                 dragBarCorner();
-                fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
             }
             else if (mouse_interaction == Mouse_interaction::Dragging_bar) {
                 dragBar();
-                fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
             }
             else if (mouse_interaction == Mouse_interaction::None) {
                 if (tryStartDragOperationOnExistingBar(bar_index)) ;
@@ -44,29 +42,32 @@ void Bar_chart::renderAndInteractWithValues()
             highlightHoveredHotspot(interaction_rects); // TODO: replace with code that does not rely on hotspot rects
         }
 
-        drawBar(rect, bar_index == dragged_bar_index);
+        drawBar(rect, bar_index == dragged_bar_index ? 0x800000FF : 0xFF0000FF);
 
         ++bar_index;
     }
-}
 
-void Bar_chart::afterRenderingValues()
-{
     if (mouse_interaction == Mouse_interaction::None) {
         if (ImGui::IsItemActive()) {
             beginAddNewBarOperation();
         }
     }
-    else if (mouse_interaction == Mouse_interaction::Defining_new_bar) {
-        updateAddNewBarOperation();
+    else {
+        if (mouse_interaction == Mouse_interaction::Defining_new_bar) {
+            updateAddNewBarOperation();
+        }
+        const auto rect = barToScreenRect(interaction_bar);
+        drawBar(rect, 0xE00000FF);
+
+        fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
     }
 }
 
-void Bar_chart::drawBar(const ImVec4& rect, bool dragging)
+void Bar_chart::drawBar(const ImVec4& rect, ImU32 color)
 {
     auto wdl = ImGui::GetWindowDrawList();
 
-    wdl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, dragging ? 0x800000FF : 0xFF0000FF);
+    wdl->AddRectFilled({rect.x, rect.y}, {rect.z, rect.w}, color);
     wdl->AddRect({rect.x, rect.y}, {rect.z, rect.w}, 0xFFFFFFFF);
 }
 
@@ -76,10 +77,14 @@ bool Bar_chart::tryStartDragOperationOnExistingBar(int bar_index)
     auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
     auto rect = barToScreenRect(bars[bar_index]);
 
-    bool on_left_edge   = abs(rect.x - clicked_pos.x) < 3 *ds;
-    bool on_right_edge  = abs(rect.z - clicked_pos.x) < 3 *ds;
-    bool on_bottom_edge = abs(rect.w - clicked_pos.y) < 3 *ds;
-    bool on_top_edge    = abs(rect.y - clicked_pos.y) < 3 *ds;
+    bool in_height_range = clicked_pos.y >= rect.y + 3 * ds && clicked_pos.y <= rect.w - 3 * ds;
+    bool in_width_range  = clicked_pos.x >= rect.x + 3 * ds && clicked_pos.y <= rect.z - 3 * ds;
+
+    // TODO: Make these into free query functions operating on ImVec4
+    bool on_left_edge   = abs(rect.x - clicked_pos.x) < 3 *ds && in_height_range;
+    bool on_right_edge  = abs(rect.z - clicked_pos.x) < 3 *ds && in_height_range;
+    bool on_bottom_edge = abs(rect.w - clicked_pos.y) < 3 *ds && in_width_range;
+    bool on_top_edge    = abs(rect.y - clicked_pos.y) < 3 *ds && in_width_range;
 
     if      (on_left_edge  && on_top_edge   ) beginDraggingBarCorner(bar_index, Corner::Top_left    );
     else if (on_right_edge && on_top_edge   ) beginDraggingBarCorner(bar_index, Corner::Top_right   );
@@ -118,6 +123,7 @@ void Bar_chart::beginDraggingBarEdge(int bar_index, Edge edge)
 
     dragged_bar_index = bar_index;
     dragged_edge = edge;
+    interaction_bar = bars[bar_index];
 
     mouse_interaction = Mouse_interaction::Dragging_bar_edge;
 }
@@ -158,7 +164,8 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
     event.type = Event::Reshaping_bar;
     event.edges.set(edge);
     event.bar_index = dragged_bar_index;
-    event.bar = bars[dragged_bar_index];
+    //event.bar = bars[dragged_bar_index];
+    event.bar = interaction_bar;
 
     if      (edge == Edge::Left  ) event.bar.x1 = new_x;
     else if (edge == Edge::Right ) event.bar.x2 = new_x;
@@ -166,7 +173,8 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
     else if (edge == Edge::Top   ) event.bar.y2 = new_y;
 
     if (event_handler(event)) {
-        bars[dragged_bar_index] = event.bar;
+        // bars[dragged_bar_index] = event.bar;
+        interaction_bar = event.bar;
     }
 
     return false;
@@ -174,8 +182,7 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
 
 void Bar_chart::endDraggingBarEdge()
 {
-    // TODO: commit changed value
-
+    commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
     dragged_bar_index = -1;
     dragged_edge = Edge::None;
@@ -205,8 +212,11 @@ void Bar_chart::beginDraggingBar(int bar_index)
 
     dragged_bar_index = bar_index;
 
+    interaction_bar = bars[bar_index];
+
+    // TODO: still needed now that we use copy of bar?
     const auto& bar = bars[bar_index];
-    x_at_drag_start = bar.x1;
+    x_at_drag_start = bar.x1; 
     y_at_drag_start = bar.y1;
 }
 
@@ -226,7 +236,8 @@ void Bar_chart::dragBar()
     Event event;
     event.type = Event::Moving_bar;
     event.bar_index = dragged_bar_index;
-    event.bar = bars[dragged_bar_index];
+    //event.bar = bars[dragged_bar_index];
+    event.bar = interaction_bar;
 
     event.bar.x2 = new_x + event.bar.width();
     event.bar.x1 = new_x;
@@ -235,15 +246,15 @@ void Bar_chart::dragBar()
 
     if (event_handler(event))
     {
-        bars[dragged_bar_index] = event.bar;
+        interaction_bar = event.bar;
     }
 }
 
 void Bar_chart::endDraggingBar()
 {
-    // TODO: commit
-
+    commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
+    dragged_bar_index = -1;
 }
 
 void Bar_chart::beginAddNewBarOperation()
@@ -260,7 +271,6 @@ void Bar_chart::updateAddNewBarOperation()
 
     Event event;
     event.type = Event::Defining_new_bar;
-    event.bar_index = -1;
 
     bool left_to_right = mouse_pos.x >= click_pos.x;
     bool bottom_to_top = mouse_pos.y <= click_pos.y;
@@ -270,18 +280,18 @@ void Bar_chart::updateAddNewBarOperation()
     event.bar.y2 = roundYValue(screenToPlotUnitsY(bottom_to_top ? mouse_pos.y : click_pos.y));
     assert(event.bar.x1 <= event.bar.x2 && event.bar.y1 <= event.bar.y2);
 
-    if (new_bar.x2 > new_bar.x1 && new_bar.y2 > new_bar.y1) {
+    if (event.bar.x2 > event.bar.x1 && event.bar.y2 > event.bar.y1) {
         if (event_handler(event)) {
-            new_bar = event.bar;
-            const auto rect = barToScreenRect(new_bar);
-            drawBar(rect, false);
+            interaction_bar = event.bar;
+            // const auto rect = barToScreenRect(interaction_bar);
+            // drawBar(rect, true);
         }
     }
 }
 
 void Bar_chart::endAddNewBarOperation()
 {
-    // TODO...: commit
+    commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
 }
 
@@ -290,6 +300,22 @@ void Bar_chart::drawZoneHighlight(const ImVec4 &zone)
     auto fdl = ImGui::GetForegroundDrawList();
 
     fdl->AddRectFilled({zone.x, zone.y}, {zone.z, zone.w}, 0x8080FFFF); // TODO: color constant or setting
+}
+
+bool Bar_chart::commitBarEdits()
+{
+    Event event;
+    event.type = Event::Committing;
+    event.bar_index = dragged_bar_index;
+    event.bar = interaction_bar;
+    if (event_handler(event)) {
+        if (dragged_bar_index < 0) 
+            bars.push_back(event.bar);
+        else
+            bars[dragged_bar_index] = event.bar;
+        return true;
+    }
+    return false;
 }
 
 auto Bar_chart::roundXValue(float x) -> float

@@ -109,9 +109,9 @@ public:
 protected:
 
     void renderAndInteractWithValues() override;
-    void afterRenderingValues() override;
+    // void afterRenderingValues() override;
 
-    void drawBar(const ImVec4& rect, bool dragging);
+    void drawBar(const ImVec4& rect, ImU32 color);
 
     auto roundXValue(float) -> float;
     auto roundYValue(float) -> float;
@@ -154,6 +154,8 @@ private:
 
     void drawZoneHighlight(const ImVec4& zone);
 
+    bool commitBarEdits();
+
     bool tryDragEdgeTo(Edge handle, float new_x, float new_y);
 
     auto getBarInteractionZoneRects(const ImVec4&) -> std::array<ImVec4, 5>;
@@ -180,7 +182,5 @@ private:
     Edge dragged_edge;
     Corner dragged_corner;
     float x_at_drag_start, y_at_drag_start;
-
-    // Adding a new bar via click-and-drag
-    Bar new_bar;
+    Bar interaction_bar;
 };

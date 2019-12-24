@@ -25,7 +25,7 @@ void Chart::render(float w, float h, float dpi_scaling)
 
     renderAndInteractWithValues();
 
-    afterRenderingValues();
+    // afterRenderingValues();
 }
 
 void Chart::updateGeometry(float w, float h, float dpi_scaling)
