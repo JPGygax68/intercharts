@@ -95,6 +95,27 @@ void Chart::drawLabel(float x, float y, const char *label)
     dl->AddText(nullptr, ds * label_font_size, ImVec2{x - size.x / 2, y}, 0xFFFFFFFF, label);
 }
 
+auto Chart::mousePosInPlotUnits() const -> ImVec2
+{
+    auto pos = ImGui::GetIO().MousePos;
+
+    return { pos.x / pixelsPerUnitHorz(), pos.y / pixelsPerUnitVert() }; // TODO: support origin != 0
+}
+
+bool Chart::isMouseDragging() const
+{
+    auto delta = ImGui::GetMouseDragDelta(0);
+    
+    return delta.x != 0 || delta.y != 0;
+}
+
+auto Chart::mouseDragInPlotUnits() const -> ImVec2
+{
+    auto delta = ImGui::GetMouseDragDelta(0);
+    
+    return {delta.x / pixelsPerUnitHorz(), - delta.y / pixelsPerUnitVert() };
+}
+
 auto Chart::plotToScreenUnitsX(float x) const -> float
 {
     return plottingArea().x + x * pixelsPerUnitHorz(); // TODO: support origin != (0, 0)

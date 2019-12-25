@@ -3,6 +3,10 @@
 #include <intercharts/bar_chart.h>
 
 
+// TODO: reordering of bars
+// TODO: deleting bars
+
+
 // CLASS IMPLEMENTATION
 
 void Bar_chart::renderAndInteractWithValues()
@@ -71,6 +75,14 @@ void Bar_chart::drawBar(const ImVec4& rect, ImU32 color)
     wdl->AddRect({rect.x, rect.y}, {rect.z, rect.w}, 0xFFFFFFFF);
 }
 
+void Bar_chart::drawMouseDragHint(const std::string& hint)
+{
+    auto &io = ImGui::GetIO();
+    auto fdl = ImGui::GetForegroundDrawList();
+    auto ds = dpiScalingFactor();
+    fdl->AddText(nullptr, labelFontSize(), {io.MousePos.x + ds * 3, io.MousePos.y - ds * 2 - labelFontSize()}, 0xFFFFFFFF, hint.c_str());
+}
+
 bool Bar_chart::tryStartDragOperationOnExistingBar(int bar_index)
 {
     auto ds = dpiScalingFactor();
@@ -92,7 +104,7 @@ bool Bar_chart::tryStartDragOperationOnExistingBar(int bar_index)
     return false;
 }
 
-bool Bar_chart::highlightHoveredHotspot(const ImVec4& bar_rect) // const Hotspot_zone_list& zones)
+bool Bar_chart::highlightHoveredHotspot(const ImVec4& bar_rect)
 {
     auto mouse_pos = ImGui::GetIO().MousePos;
 
@@ -109,55 +121,54 @@ bool Bar_chart::highlightHoveredHotspot(const ImVec4& bar_rect) // const Hotspot
     return false;
 }
 
-void Bar_chart::dragBarEdge()
+bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge edge)
 {
-    using namespace std::string_literals;
+    auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
 
-    auto drag_delta = ImGui::GetMouseDragDelta(0);
-    if (drag_delta.x != 0 && drag_delta.y != 0)
-    {
-        auto &io = ImGui::GetIO();
-        auto fdl = ImGui::GetForegroundDrawList();
-        auto ds = dpiScalingFactor();
+    if (screenRectContainsPos(edgeRect(bar_rect, edge), clicked_pos)) {
 
-        const auto click_pos = io.MouseClickedPos[0];
-        const auto mouse_pos = io.MousePos;
+        mouse_interaction = Mouse_interaction::Dragging_bar_edge;
+        dragging_op.bar_index = bar_index;
+        dragging_op.edge = edge;
+        dragging_op.bar = bars[bar_index];
 
-        float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
-        float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
+        // TODO: still needed now that we use copy of bar?
+        const auto& bar = bars[bar_index];
+        if      (edge == Edge::Left  ) dragging_op.starting_position.x = bar.x1;
+        else if (edge == Edge::Right ) dragging_op.starting_position.x = bar.x2;
+        else if (edge == Edge::Bottom) dragging_op.starting_position.y = bar.y1;
+        else if (edge == Edge::Top   ) dragging_op.starting_position.y = bar.y2;
 
-        float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
-        float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
-
-        tryDragEdgeTo(dragging_op.edge, new_x, new_y);
-
-        // TODO: temporary, mostly for debugging -> replace
-        fdl->AddText(nullptr, labelFontSize(), {mouse_pos.x + ds * 3, mouse_pos.y - ds * 2 - labelFontSize()}, 0xFFFFFFFF,
-                     (formatFloat(new_x) + "," + formatFloat(new_y)).c_str());
-    }
-}
-
-bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
-{
-    assert(dragging_op.bar_index >= 0 && dragging_op.bar_index < (signed)bars.size());
-
-    Event event;
-    event.type = Event::Reshaping_bar;
-    event.edges.set(edge);
-    event.bar_index = dragging_op.bar_index;
-    //event.bar = bars[dragged_bar_index];
-    event.bar = dragging_op.bar;
-
-    if      (edge == Edge::Left  ) event.bar.x1 = new_x;
-    else if (edge == Edge::Right ) event.bar.x2 = new_x;
-    if      (edge == Edge::Bottom) event.bar.y1 = new_y;
-    else if (edge == Edge::Top   ) event.bar.y2 = new_y;
-
-    if (event_handler(event)) {
-        dragging_op.bar = event.bar;
+        return true;
     }
 
     return false;
+}
+
+void Bar_chart::dragBarEdge()
+{
+    if (isMouseDragging())
+    {
+        auto edge = dragging_op.edge;
+
+        Event event;
+        event.type = Event::Reshaping_bar;
+        event.edges.set(edge);
+        event.bar_index = dragging_op.bar_index;
+        event.bar = dragging_op.bar;
+
+        const auto& bar = bars[dragging_op.bar_index];
+        if      (edge == Edge::Left  ) event.bar.x1 = addHorzMouseDrag(bar.x1);
+        else if (edge == Edge::Right ) event.bar.x2 = addHorzMouseDrag(bar.x2);
+        if      (edge == Edge::Bottom) event.bar.y1 = addVertMouseDrag(bar.y1);
+        else if (edge == Edge::Top   ) event.bar.y2 = addVertMouseDrag(bar.y2);
+
+        if (event_handler(event)) {
+            dragging_op.bar = event.bar;
+        }
+
+        drawMouseDragHint("DRAGGING EDGE"); // formatFloat(dragging_op.bar.x) + "," + formatFloat(dragging_op.bar.y));
+    }
 }
 
 void Bar_chart::endBarDraggingOp()
@@ -187,54 +198,28 @@ bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect,
 
 void Bar_chart::dragBarCorner()
 {
-    auto& io = ImGui::GetIO();
+    if (isMouseDragging()) {
 
-    auto mouse_pos = io.MousePos;
-    auto click_pos = io.MouseClickedPos[0];
+        auto new_pos = dragging_op.starting_position + mouseDragInPlotUnits();
 
-    float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
-    float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
+        Event event;
+        event.type = Event::Reshaping_bar;
+        event.bar = dragging_op.bar;
+        event.bar_index = dragging_op.bar_index;
+        event.edges.set(dragging_op.corner.left_or_right);
+        event.edges.set(dragging_op.corner.bottom_or_top);
 
-    float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
-    float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
+        const auto& bar = bars[dragging_op.bar_index];
+        const auto& corner = dragging_op.corner;
+        if      (corner.left_or_right == Edge::Left  ) event.bar.x1 = addHorzMouseDrag(bar.x1);
+        else if (corner.left_or_right == Edge::Right ) event.bar.x2 = addHorzMouseDrag(bar.x2);
+        if      (corner.bottom_or_top == Edge::Bottom) event.bar.y1 = addVertMouseDrag(bar.y1);
+        else if (corner.bottom_or_top == Edge::Top   ) event.bar.y2 = addVertMouseDrag(bar.y2);
 
-    Event event;
-    event.type = Event::Reshaping_bar;
-    event.bar = dragging_op.bar;
-    event.bar_index = dragging_op.bar_index;
-    event.edges.set(dragging_op.corner.left_or_right);
-    event.edges.set(dragging_op.corner.bottom_or_top);
-    if (dragging_op.corner.left_or_right == Edge::Left  ) event.bar.x1 = new_x; else event.bar.x2 = new_x;
-    if (dragging_op.corner.bottom_or_top == Edge::Bottom) event.bar.y1 = new_y; else event.bar.y2 = new_y;
-
-    if (event_handler(event)) {
-        // bars[dragged_bar_index] = event.bar;
-        dragging_op.bar = event.bar;
+        if (event_handler(event)) {
+            dragging_op.bar = event.bar;
+        }
     }
-}
-
-bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge edge)
-{
-    auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
-
-    if (screenRectContainsPos(edgeRect(bar_rect, edge), clicked_pos)) {
-
-        mouse_interaction = Mouse_interaction::Dragging_bar_edge;
-        dragging_op.bar_index = bar_index;
-        dragging_op.edge = edge;
-        dragging_op.bar = bars[bar_index];
-
-        // TODO: still needed now that we use copy of bar?
-        const auto& bar = bars[bar_index];
-        if      (edge == Edge::Left  ) dragging_op.starting_position.x = bar.x1;
-        else if (edge == Edge::Right ) dragging_op.starting_position.x = bar.x2;
-        else if (edge == Edge::Bottom) dragging_op.starting_position.y = bar.y1;
-        else if (edge == Edge::Top   ) dragging_op.starting_position.y = bar.y2;
-
-        return true;
-    }
-
-    return false;
 }
 
 bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
@@ -261,27 +246,17 @@ bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
 
 void Bar_chart::dragBar()
 {
-    auto &io = ImGui::GetIO();
-
-    const auto click_pos = io.MouseClickedPos[0];
-    const auto mouse_pos = io.MousePos;
-
-    float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
-    float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
-
-    float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
-    float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
-
     Event event;
     event.type = Event::Moving_bar;
     event.bar_index = dragging_op.bar_index;
-    //event.bar = bars[dragged_bar_index];
     event.bar = dragging_op.bar;
+    
+    const auto& orig_bar = bars[event.bar_index];
 
-    event.bar.x2 = new_x + event.bar.width();
-    event.bar.x1 = new_x;
-    event.bar.y2 = new_y + event.bar.height();
-    event.bar.y1 = new_y;
+    event.bar.x1 = addHorzMouseDrag(orig_bar.x1);
+    event.bar.x2 = addHorzMouseDrag(orig_bar.x2);
+    event.bar.y1 = addVertMouseDrag(orig_bar.y1);
+    event.bar.y2 = addVertMouseDrag(orig_bar.y2);
 
     if (event_handler(event))
     {
@@ -315,8 +290,6 @@ void Bar_chart::updateAddNewBarOperation()
     if (event.bar.x2 > event.bar.x1 && event.bar.y2 > event.bar.y1) {
         if (event_handler(event)) {
             dragging_op.bar = event.bar;
-            // const auto rect = barToScreenRect(interaction_bar);
-            // drawBar(rect, true);
         }
     }
 }
@@ -348,32 +321,14 @@ bool Bar_chart::commitBarEdits()
     return false;
 }
 
-auto Bar_chart::roundXValue(float x) -> float
+auto Bar_chart::roundXValue(float x) const -> float
 {
     return rounding_unit_x * round(x / rounding_unit_x);
 }
 
-auto Bar_chart::roundYValue(float y) -> float
+auto Bar_chart::roundYValue(float y) const -> float
 {
     return rounding_unit_y * round(y / rounding_unit_y);
-}
-
-bool Bar_chart::hotspotBelongsToEdge(Bar_hotspot spot, Edge edge)
-{
-    using HS = Bar_hotspot;
-    static const Set<Bar_hotspot> LEFT_SPOTS{ HS::Bottom_left_corner, HS::Top_left_corner, HS::Left_edge };
-    static const Set<Bar_hotspot> TOP_SPOTS{ HS::Top_left_corner, HS::Top_edge, HS::Top_right_corner };
-    static const Set<Bar_hotspot> RIGHT_SPOTS{ HS::Top_right_corner, Right_edge, Bottom_right_corner };
-    static const Set<Bar_hotspot> BOTTOM_SPOTS{ HS::Bottom_left_corner, HS::Bottom_edge, HS::Bottom_right_corner };
-
-    switch (edge) {
-    case Edge::Top   : return TOP_SPOTS.contains(spot);
-    case Edge::Right : return RIGHT_SPOTS.contains(spot);
-    case Edge::Bottom: return BOTTOM_SPOTS.contains(spot);
-    case Edge::Left  : return LEFT_SPOTS.contains(spot);
-    }
-
-    return false;
 }
 
 auto Bar_chart::barToScreenRect(const Bar &bar) const -> ImVec4

@@ -35,20 +35,6 @@ public:
         void moveYTo(float y) { y2 += y - y1; y1 = y; }
     };
 
-    enum Bar_hotspot
-    {
-        None = 0,
-        Left_edge,
-        Top_edge,
-        Right_edge,
-        Bottom_edge,
-        Interior,
-        Top_left_corner,
-        Top_right_corner,
-        Bottom_right_corner,
-        Bottom_left_corner
-    };
-
     struct Event { // TODO: more distinctive name
         enum { 
             None = 0, 
@@ -116,12 +102,28 @@ protected:
 
     void drawBar(const ImVec4& rect, ImU32 color);
 
-    auto roundXValue(float) -> float;
-    auto roundYValue(float) -> float;
+    void drawMouseDragHint(const std::string& hint);
+
+    auto roundXValue(float) const -> float;
+    auto roundYValue(float) const -> float;
+
+    void moveX(float& x, float dx) const { x = roundXValue(x + dx); }
+    void moveY(float& y, float dy) const { y = roundYValue(y + dy); }
+
+    auto add(const ImVec2& point, const ImVec2& delta) const -> ImVec2 {
+        return { roundXValue(point.x + delta.x), roundYValue(point.y + delta.y) };
+    }
+    auto addX(float x, float dx) const -> float { return roundXValue(x + dx); }
+    auto addY(float y, float dy) const -> float { return roundYValue(y + dy); }
+
+    void moveXByMouseDrag(float& x) const { moveX(x, mouseDragInPlotUnits().x); }
+    void moveYByMouseDrag(float& y) const { moveY(y, mouseDragInPlotUnits().y); }
+
+    auto addHorzMouseDrag(float x) const -> float { return addX(x, mouseDragInPlotUnits().x); }
+    auto addVertMouseDrag(float y) const -> float { return addY(y, mouseDragInPlotUnits().y); }
+    auto addMouseDrag(const ImVec2& pos) const -> ImVec2 { return add(pos, mouseDragInPlotUnits()); }
 
 private:
-
-    static bool hotspotBelongsToEdge(Bar_hotspot spot, Edge edge);
 
     enum class Mouse_interaction { 
         None = 0, 
@@ -141,7 +143,6 @@ private:
 
     bool tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge);
     void dragBarEdge();
-    bool tryDragEdgeTo(Edge handle, float new_x, float new_y);
 
     bool tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top);
     void dragBarCorner();

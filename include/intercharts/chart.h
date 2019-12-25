@@ -30,6 +30,10 @@ protected:
     virtual void renderAndInteractWithValues() = 0;
     // virtual void afterRenderingValues() {}
 
+    auto mousePosInPlotUnits() const -> ImVec2;
+    bool isMouseDragging() const;
+    auto mouseDragInPlotUnits() const -> ImVec2;
+
     auto plotToScreenUnitsX(float x) const -> float;
     auto plotToScreenUnitsY(float y) const -> float;
     auto screenToPlotUnitsX(float x) const -> float;
@@ -65,3 +69,9 @@ private:
     float y_xaxis_labels;
 };
 
+
+// TEMPORARY: ImGui conveniences
+
+inline ImVec2 operator + (const ImVec2& a, const ImVec2 b) {
+    return { a.x + b.x, a.y + b.y };
+};
