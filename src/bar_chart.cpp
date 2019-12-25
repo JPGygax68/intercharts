@@ -45,7 +45,7 @@ void Bar_chart::renderAndInteractWithValues()
             highlightHoveredHotspot(rect); // interaction_rects); // TODO: replace with code that does not rely on hotspot rects
         }
 
-        drawBar(rect, bar_index == dragged_bar_index ? 0x800000FF : 0xFF0000FF);
+        drawBar(rect, bar_index == dragging_op.bar_index ? 0x800000FF : 0xFF0000FF);
 
         ++bar_index;
     }
@@ -59,7 +59,7 @@ void Bar_chart::renderAndInteractWithValues()
         if (mouse_interaction == Mouse_interaction::Defining_new_bar) {
             updateAddNewBarOperation();
         }
-        const auto rect = barToScreenRect(interaction_bar);
+        const auto rect = barToScreenRect(dragging_op.bar);
         drawBar(rect, 0xE00000FF);
 
         fdl->AddLine(click_pos, io.MousePos, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
@@ -129,10 +129,10 @@ void Bar_chart::dragBarEdge()
         float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
         float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
 
-        float new_x = roundXValue(x_at_drag_start + delta_x);
-        float new_y = roundYValue(y_at_drag_start + delta_y);
+        float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
+        float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
 
-        tryDragEdgeTo(dragged_edge, new_x, new_y);
+        tryDragEdgeTo(dragging_op.edge, new_x, new_y);
 
         // TODO: temporary, mostly for debugging -> replace
         fdl->AddText(nullptr, labelFontSize(), {mouse_pos.x + ds * 3, mouse_pos.y - ds * 2 - labelFontSize()}, 0xFFFFFFFF,
@@ -142,14 +142,14 @@ void Bar_chart::dragBarEdge()
 
 bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
 {
-    assert(dragged_bar_index >= 0 && dragged_bar_index < (signed)bars.size());
+    assert(dragging_op.bar_index >= 0 && dragging_op.bar_index < (signed)bars.size());
 
     Event event;
     event.type = Event::Reshaping_bar;
     event.edges.set(edge);
-    event.bar_index = dragged_bar_index;
+    event.bar_index = dragging_op.bar_index;
     //event.bar = bars[dragged_bar_index];
-    event.bar = interaction_bar;
+    event.bar = dragging_op.bar;
 
     if      (edge == Edge::Left  ) event.bar.x1 = new_x;
     else if (edge == Edge::Right ) event.bar.x2 = new_x;
@@ -157,7 +157,7 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
     else if (edge == Edge::Top   ) event.bar.y2 = new_y;
 
     if (event_handler(event)) {
-        interaction_bar = event.bar;
+        dragging_op.bar = event.bar;
     }
 
     return false;
@@ -167,8 +167,8 @@ void Bar_chart::endDraggingBarEdge()
 {
     commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
-    dragged_bar_index = -1;
-    dragged_edge = Edge::None;
+    dragging_op.bar_index = -1;
+    dragging_op.edge = Edge::None;
 }
 
 bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top)
@@ -177,11 +177,11 @@ bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect,
 
     if (screenRectContainsPos(cornerRect(bar_rect, left_or_right, bottom_or_top), clicked_pos)) {
         auto &bar = bars[bar_index];
-        x_at_drag_start = left_or_right == Edge::Left   ? bar.x1 : bar.x2;
-        y_at_drag_start = bottom_or_top == Edge::Bottom ? bar.y1 : bar.y2;
-        dragged_bar_index = bar_index;
-        dragged_corner = Corner{ left_or_right, bottom_or_top };
-        interaction_bar = bar;
+        dragging_op.starting_position.x = left_or_right == Edge::Left   ? bar.x1 : bar.x2;
+        dragging_op.starting_position.y = bottom_or_top == Edge::Bottom ? bar.y1 : bar.y2;
+        dragging_op.bar_index = bar_index;
+        dragging_op.corner = Corner{ left_or_right, bottom_or_top };
+        dragging_op.bar = bar;
         mouse_interaction = Mouse_interaction::Dragging_bar_corner;
     }
 
@@ -198,24 +198,22 @@ void Bar_chart::dragBarCorner()
     float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
     float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
 
-    float new_x = roundXValue(x_at_drag_start + delta_x);
-    float new_y = roundYValue(y_at_drag_start + delta_y);
+    float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
+    float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
 
     Event event;
     event.type = Event::Reshaping_bar;
-    event.bar = interaction_bar;
-    event.bar_index = dragged_bar_index;
-    event.edges.set(dragged_corner.left_or_right);
-    event.edges.set(dragged_corner.bottom_or_top);
-    if (dragged_corner.left_or_right == Edge::Left  ) event.bar.x1 = new_x; else event.bar.x2 = new_x;
-    if (dragged_corner.bottom_or_top == Edge::Bottom) event.bar.y1 = new_y; else event.bar.y2 = new_y;
+    event.bar = dragging_op.bar;
+    event.bar_index = dragging_op.bar_index;
+    event.edges.set(dragging_op.corner.left_or_right);
+    event.edges.set(dragging_op.corner.bottom_or_top);
+    if (dragging_op.corner.left_or_right == Edge::Left  ) event.bar.x1 = new_x; else event.bar.x2 = new_x;
+    if (dragging_op.corner.bottom_or_top == Edge::Bottom) event.bar.y1 = new_y; else event.bar.y2 = new_y;
 
     if (event_handler(event)) {
         // bars[dragged_bar_index] = event.bar;
-        interaction_bar = event.bar;
+        dragging_op.bar = event.bar;
     }
-
-    // TODO...
 }
 
 void Bar_chart::endDraggingBarCorner()
@@ -223,8 +221,8 @@ void Bar_chart::endDraggingBarCorner()
     // TODO...
 
     mouse_interaction = Mouse_interaction::None;
-    dragged_bar_index = -1;
-    dragged_corner = {};
+    dragging_op.bar_index = -1;
+    dragging_op.corner = {};
 }
 
 bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge edge)
@@ -234,16 +232,16 @@ bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, E
     if (screenRectContainsPos(edgeRect(bar_rect, edge), clicked_pos)) {
 
         mouse_interaction = Mouse_interaction::Dragging_bar_edge;
-        dragged_bar_index = bar_index;
-        dragged_edge = edge;
-        interaction_bar = bars[bar_index];
+        dragging_op.bar_index = bar_index;
+        dragging_op.edge = edge;
+        dragging_op.bar = bars[bar_index];
 
         // TODO: still needed now that we use copy of bar?
         const auto& bar = bars[bar_index];
-        if      (edge == Edge::Left  ) x_at_drag_start = bar.x1;
-        else if (edge == Edge::Right ) x_at_drag_start = bar.x2;
-        else if (edge == Edge::Bottom) y_at_drag_start = bar.y1;
-        else if (edge == Edge::Top   ) y_at_drag_start = bar.y2;
+        if      (edge == Edge::Left  ) dragging_op.starting_position.x = bar.x1;
+        else if (edge == Edge::Right ) dragging_op.starting_position.x = bar.x2;
+        else if (edge == Edge::Bottom) dragging_op.starting_position.y = bar.y1;
+        else if (edge == Edge::Top   ) dragging_op.starting_position.y = bar.y2;
 
         return true;
     }
@@ -258,14 +256,14 @@ bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
     if (screenRectContainsPos(interiorRect(bar_rect), clicked_pos)) {
         mouse_interaction = Mouse_interaction::Dragging_bar;
 
-        dragged_bar_index = bar_index;
+        dragging_op.bar_index = bar_index;
 
-        interaction_bar = bars[bar_index];
+        dragging_op.bar = bars[bar_index];
 
         // TODO: still needed now that we use copy of bar?
         const auto& bar = bars[bar_index];
-        x_at_drag_start = bar.x1;
-        y_at_drag_start = bar.y1;
+        dragging_op.starting_position.x = bar.x1;
+        dragging_op.starting_position.y = bar.y1;
 
         return true;
     }
@@ -283,14 +281,14 @@ void Bar_chart::dragBar()
     float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
     float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
 
-    float new_x = roundXValue(x_at_drag_start + delta_x);
-    float new_y = roundYValue(y_at_drag_start + delta_y);
+    float new_x = roundXValue(dragging_op.starting_position.x + delta_x);
+    float new_y = roundYValue(dragging_op.starting_position.y + delta_y);
 
     Event event;
     event.type = Event::Moving_bar;
-    event.bar_index = dragged_bar_index;
+    event.bar_index = dragging_op.bar_index;
     //event.bar = bars[dragged_bar_index];
-    event.bar = interaction_bar;
+    event.bar = dragging_op.bar;
 
     event.bar.x2 = new_x + event.bar.width();
     event.bar.x1 = new_x;
@@ -299,7 +297,7 @@ void Bar_chart::dragBar()
 
     if (event_handler(event))
     {
-        interaction_bar = event.bar;
+        dragging_op.bar = event.bar;
     }
 }
 
@@ -307,7 +305,7 @@ void Bar_chart::endDraggingBar()
 {
     commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
-    dragged_bar_index = -1;
+    dragging_op.bar_index = -1;
 }
 
 void Bar_chart::beginAddNewBarOperation()
@@ -335,7 +333,7 @@ void Bar_chart::updateAddNewBarOperation()
 
     if (event.bar.x2 > event.bar.x1 && event.bar.y2 > event.bar.y1) {
         if (event_handler(event)) {
-            interaction_bar = event.bar;
+            dragging_op.bar = event.bar;
             // const auto rect = barToScreenRect(interaction_bar);
             // drawBar(rect, true);
         }
@@ -363,13 +361,13 @@ bool Bar_chart::commitBarEdits()
 {
     Event event;
     event.type = Event::Committing;
-    event.bar_index = dragged_bar_index;
-    event.bar = interaction_bar;
+    event.bar_index = dragging_op.bar_index;
+    event.bar = dragging_op.bar;
     if (event_handler(event)) {
-        if (dragged_bar_index < 0) 
+        if (dragging_op.bar_index < 0) 
             bars.push_back(event.bar);
         else
-            bars[dragged_bar_index] = event.bar;
+            bars[dragging_op.bar_index] = event.bar;
         return true;
     }
     return false;

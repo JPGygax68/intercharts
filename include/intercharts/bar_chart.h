@@ -176,11 +176,14 @@ private:
 
     Mouse_interaction mouse_interaction = Mouse_interaction::None;
 
-    // Dragging edges of a Bar
-    int dragged_bar_index = -1; // Bar the user is interacting with
-    // Bar_hotspot dragged_handle = Bar_hotspot::None;
-    Edge dragged_edge;
-    Corner dragged_corner;
-    float x_at_drag_start, y_at_drag_start;
-    Bar interaction_bar;
+    struct Dragging_operation {
+        int bar_index = -1; // Bar the user is interacting with
+        // Bar_hotspot dragged_handle = Bar_hotspot::None;
+        Edge edge;
+        Corner corner;
+        ImVec2 starting_position; // float x_at_drag_start, y_at_drag_start;
+        Bar bar;
+    };
+
+    Dragging_operation dragging_op;
 };
