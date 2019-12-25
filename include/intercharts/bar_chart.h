@@ -134,29 +134,25 @@ private:
     using Hotspot_zone_list = std::array<ImVec4, 5>;
 
     bool tryStartDragOperationOnExistingBar(int i_rect);
-    bool highlightHoveredHotspot(const ImVec4& bar_rect); // const Hotspot_zone_list& zones);
+    bool highlightHoveredHotspot(const ImVec4& bar_rect);
     bool highlightRectIfHovered(const ImVec4& rect, const ImVec2& mouse_pos);
+
+    void endBarDraggingOp();
 
     bool tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge);
     void dragBarEdge();
     bool tryDragEdgeTo(Edge handle, float new_x, float new_y);
-    void endDraggingBarEdge();
 
     bool tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top);
     void dragBarCorner();
-    void endDraggingBarCorner();
 
     bool tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect);
     void dragBar();
-    void endDraggingBar();
 
     void beginAddNewBarOperation();
     void updateAddNewBarOperation();
-    void endAddNewBarOperation();
 
     bool commitBarEdits();
-
-    auto getBarInteractionZoneRects(const ImVec4&) -> std::array<ImVec4, 5>;
 
     auto barToScreenRect(const Bar&) const -> ImVec4;
     auto cornerRect(const ImVec4& rect, Edge left_or_right, Edge bottom_or_top) const -> ImVec4;
@@ -177,11 +173,10 @@ private:
     Mouse_interaction mouse_interaction = Mouse_interaction::None;
 
     struct Dragging_operation {
-        int bar_index = -1; // Bar the user is interacting with
-        // Bar_hotspot dragged_handle = Bar_hotspot::None;
+        int bar_index = -1;
         Edge edge;
         Corner corner;
-        ImVec2 starting_position; // float x_at_drag_start, y_at_drag_start;
+        ImVec2 starting_position;
         Bar bar;
     };
 

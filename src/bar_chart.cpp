@@ -38,10 +38,7 @@ void Bar_chart::renderAndInteractWithValues()
         }
         else
         {
-            if      (mouse_interaction == Mouse_interaction::Dragging_bar       ) endDraggingBar();
-            else if (mouse_interaction == Mouse_interaction::Dragging_bar_edge  ) endDraggingBarEdge();
-            else if (mouse_interaction == Mouse_interaction::Dragging_bar_corner) endDraggingBarEdge();
-            else if (mouse_interaction == Mouse_interaction::Defining_new_bar   ) endAddNewBarOperation(); // TODO: support cancelling with right mouse button?
+            if (mouse_interaction != Mouse_interaction::None) endBarDraggingOp();
             highlightHoveredHotspot(rect); // interaction_rects); // TODO: replace with code that does not rely on hotspot rects
         }
 
@@ -163,7 +160,7 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
     return false;
 }
 
-void Bar_chart::endDraggingBarEdge()
+void Bar_chart::endBarDraggingOp()
 {
     commitBarEdits();
     mouse_interaction = Mouse_interaction::None;
@@ -214,15 +211,6 @@ void Bar_chart::dragBarCorner()
         // bars[dragged_bar_index] = event.bar;
         dragging_op.bar = event.bar;
     }
-}
-
-void Bar_chart::endDraggingBarCorner()
-{
-    // TODO...
-
-    mouse_interaction = Mouse_interaction::None;
-    dragging_op.bar_index = -1;
-    dragging_op.corner = {};
 }
 
 bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge edge)
@@ -301,13 +289,6 @@ void Bar_chart::dragBar()
     }
 }
 
-void Bar_chart::endDraggingBar()
-{
-    commitBarEdits();
-    mouse_interaction = Mouse_interaction::None;
-    dragging_op.bar_index = -1;
-}
-
 void Bar_chart::beginAddNewBarOperation()
 {
     mouse_interaction = Mouse_interaction::Defining_new_bar;
@@ -338,12 +319,6 @@ void Bar_chart::updateAddNewBarOperation()
             // drawBar(rect, true);
         }
     }
-}
-
-void Bar_chart::endAddNewBarOperation()
-{
-    commitBarEdits();
-    mouse_interaction = Mouse_interaction::None;
 }
 
 bool Bar_chart::highlightRectIfHovered(const ImVec4 &rect, const ImVec2& mouse_pos)
@@ -399,17 +374,6 @@ bool Bar_chart::hotspotBelongsToEdge(Bar_hotspot spot, Edge edge)
     }
 
     return false;
-}
-
-auto Bar_chart::getBarInteractionZoneRects(const ImVec4 &rect) -> std::array<ImVec4, 5>
-{
-    return std::array<ImVec4, 5>{
-        leftEdgeRect(rect),
-        topEdgeRect(rect),
-        rightEdgeRect(rect),
-        bottomEdgeRect(rect),
-        interiorRect(rect),
-    };
 }
 
 auto Bar_chart::barToScreenRect(const Bar &bar) const -> ImVec4
