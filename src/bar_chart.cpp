@@ -132,13 +132,6 @@ bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, E
         dragging_op.edge = edge;
         dragging_op.bar = bars[bar_index];
 
-        // TODO: still needed now that we use copy of bar?
-        const auto& bar = bars[bar_index];
-        if      (edge == Edge::Left  ) dragging_op.starting_position.x = bar.x1;
-        else if (edge == Edge::Right ) dragging_op.starting_position.x = bar.x2;
-        else if (edge == Edge::Bottom) dragging_op.starting_position.y = bar.y1;
-        else if (edge == Edge::Top   ) dragging_op.starting_position.y = bar.y2;
-
         return true;
     }
 
@@ -185,8 +178,6 @@ bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect,
 
     if (screenRectContainsPos(cornerRect(bar_rect, left_or_right, bottom_or_top), clicked_pos)) {
         auto &bar = bars[bar_index];
-        dragging_op.starting_position.x = left_or_right == Edge::Left   ? bar.x1 : bar.x2;
-        dragging_op.starting_position.y = bottom_or_top == Edge::Bottom ? bar.y1 : bar.y2;
         dragging_op.bar_index = bar_index;
         dragging_op.corner = Corner{ left_or_right, bottom_or_top };
         dragging_op.bar = bar;
@@ -199,8 +190,6 @@ bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect,
 void Bar_chart::dragBarCorner()
 {
     if (isMouseDragging()) {
-
-        auto new_pos = dragging_op.starting_position + mouseDragInPlotUnits();
 
         Event event;
         event.type = Event::Reshaping_bar;
@@ -227,16 +216,10 @@ bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
     auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
 
     if (screenRectContainsPos(interiorRect(bar_rect), clicked_pos)) {
+
         mouse_interaction = Mouse_interaction::Dragging_bar;
-
         dragging_op.bar_index = bar_index;
-
         dragging_op.bar = bars[bar_index];
-
-        // TODO: still needed now that we use copy of bar?
-        const auto& bar = bars[bar_index];
-        dragging_op.starting_position.x = bar.x1;
-        dragging_op.starting_position.y = bar.y1;
 
         return true;
     }
@@ -246,21 +229,17 @@ bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
 
 void Bar_chart::dragBar()
 {
-    Event event;
-    event.type = Event::Moving_bar;
-    event.bar_index = dragging_op.bar_index;
-    event.bar = dragging_op.bar;
+    if (isMouseDragging()) {
     
-    const auto& orig_bar = bars[event.bar_index];
+        Event event;
+        event.type = Event::Moving_bar;
+        event.bar_index = dragging_op.bar_index;
+        event.bar = moveBarBy(bars[event.bar_index], mouseDragInPlotUnits());
 
-    event.bar.x1 = addHorzMouseDrag(orig_bar.x1);
-    event.bar.x2 = addHorzMouseDrag(orig_bar.x2);
-    event.bar.y1 = addVertMouseDrag(orig_bar.y1);
-    event.bar.y2 = addVertMouseDrag(orig_bar.y2);
-
-    if (event_handler(event))
-    {
-        dragging_op.bar = event.bar;
+        if (event_handler(event))
+        {
+            dragging_op.bar = event.bar;
+        }
     }
 }
 
@@ -281,10 +260,10 @@ void Bar_chart::updateAddNewBarOperation()
 
     bool left_to_right = mouse_pos.x >= click_pos.x;
     bool bottom_to_top = mouse_pos.y <= click_pos.y;
-    event.bar.x1 = roundXValue(screenToPlotUnitsX(left_to_right ? click_pos.x : mouse_pos.x));
-    event.bar.x2 = roundXValue(screenToPlotUnitsX(left_to_right ? mouse_pos.x : click_pos.x));
-    event.bar.y1 = roundYValue(screenToPlotUnitsY(bottom_to_top ? click_pos.y : mouse_pos.y));
-    event.bar.y2 = roundYValue(screenToPlotUnitsY(bottom_to_top ? mouse_pos.y : click_pos.y));
+    event.bar.x1 = roundX(screenToPlotUnitsX(left_to_right ? click_pos.x : mouse_pos.x));
+    event.bar.x2 = roundX(screenToPlotUnitsX(left_to_right ? mouse_pos.x : click_pos.x));
+    event.bar.y1 = roundY(screenToPlotUnitsY(bottom_to_top ? click_pos.y : mouse_pos.y));
+    event.bar.y2 = roundY(screenToPlotUnitsY(bottom_to_top ? mouse_pos.y : click_pos.y));
     assert(event.bar.x1 <= event.bar.x2 && event.bar.y1 <= event.bar.y2);
 
     if (event.bar.x2 > event.bar.x1 && event.bar.y2 > event.bar.y1) {
@@ -321,12 +300,12 @@ bool Bar_chart::commitBarEdits()
     return false;
 }
 
-auto Bar_chart::roundXValue(float x) const -> float
+auto Bar_chart::roundX(float x) const -> float
 {
     return rounding_unit_x * round(x / rounding_unit_x);
 }
 
-auto Bar_chart::roundYValue(float y) const -> float
+auto Bar_chart::roundY(float y) const -> float
 {
     return rounding_unit_y * round(y / rounding_unit_y);
 }

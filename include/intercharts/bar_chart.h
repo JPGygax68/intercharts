@@ -33,6 +33,9 @@ public:
         auto height() const { return y2 - y1; }
         void moveXTo(float x) { x2 += x - x1; x1 = x; }
         void moveYTo(float y) { y2 += y - y1; y1 = y; }
+        void moveBy(const ImVec2& delta) {
+            x1 += delta.x, x2 += delta.y, y1 += delta.y, y2 += delta.y;
+        }
     };
 
     struct Event { // TODO: more distinctive name
@@ -93,28 +96,31 @@ public:
 
     void clearRectangles() { bars.clear(); }
 
-    // Display & interaction
-
 protected:
 
     void renderAndInteractWithValues() override;
-    // void afterRenderingValues() override;
 
     void drawBar(const ImVec4& rect, ImU32 color);
 
     void drawMouseDragHint(const std::string& hint);
 
-    auto roundXValue(float) const -> float;
-    auto roundYValue(float) const -> float;
+    auto roundX(float) const -> float;
+    auto roundY(float) const -> float;
 
-    void moveX(float& x, float dx) const { x = roundXValue(x + dx); }
-    void moveY(float& y, float dy) const { y = roundYValue(y + dy); }
+    void moveX(float& x, float dx) const { x = roundX(x + dx); }
+    void moveY(float& y, float dy) const { y = roundY(y + dy); }
 
     auto add(const ImVec2& point, const ImVec2& delta) const -> ImVec2 {
-        return { roundXValue(point.x + delta.x), roundYValue(point.y + delta.y) };
+        return { roundX(point.x + delta.x), roundY(point.y + delta.y) };
     }
-    auto addX(float x, float dx) const -> float { return roundXValue(x + dx); }
-    auto addY(float y, float dy) const -> float { return roundYValue(y + dy); }
+    auto addX(float x, float dx) const -> float { return roundX(x + dx); }
+    auto addY(float y, float dy) const -> float { return roundY(y + dy); }
+
+    auto moveBarBy(const Bar& orig, const ImVec2& delta) -> Bar {
+        return { 
+            roundX(orig.x1 + delta.x), roundY(orig.y1 + delta.y), 
+            roundX(orig.x2 + delta.x), roundY(orig.y2 + delta.y) };
+    }
 
     void moveXByMouseDrag(float& x) const { moveX(x, mouseDragInPlotUnits().x); }
     void moveYByMouseDrag(float& y) const { moveY(y, mouseDragInPlotUnits().y); }
@@ -177,7 +183,7 @@ private:
         int bar_index = -1;
         Edge edge;
         Corner corner;
-        ImVec2 starting_position;
+        // ImVec2 starting_position;
         Bar bar;
     };
 
