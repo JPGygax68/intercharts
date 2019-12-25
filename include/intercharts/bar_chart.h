@@ -18,7 +18,10 @@ public:
         bool contains_top() const { return contains(Edge::Top); }
     };
 
-    enum class Corner { None = 0, Top_left, Top_right, Bottom_right, Bottom_left };
+    //enum class Corner { None = 0, Top_left, Top_right, Bottom_right, Bottom_left };
+    struct Corner {
+        Edge left_or_right, bottom_or_top;
+    };
 
     struct Bar
     {
@@ -118,9 +121,6 @@ protected:
 
 private:
 
-    // static bool compare_bar_positions(const Bar& a, const Bar& b) { return a.x1 < b.x1; }
-    //using Bar_set = std::set<Bar, decltype(&compare_bar_positions)>;
-
     static bool hotspotBelongsToEdge(Bar_hotspot spot, Edge edge);
 
     enum class Mouse_interaction { 
@@ -134,17 +134,19 @@ private:
     using Hotspot_zone_list = std::array<ImVec4, 5>;
 
     bool tryStartDragOperationOnExistingBar(int i_rect);
-    void highlightHoveredHotspot(const Hotspot_zone_list& zones);
+    bool highlightHoveredHotspot(const ImVec4& bar_rect); // const Hotspot_zone_list& zones);
+    bool highlightRectIfHovered(const ImVec4& rect, const ImVec2& mouse_pos);
 
-    void beginDraggingBarEdge(int bar_index, Edge edge);
+    bool tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge);
     void dragBarEdge();
+    bool tryDragEdgeTo(Edge handle, float new_x, float new_y);
     void endDraggingBarEdge();
 
-    void beginDraggingBarCorner(int bar_index, Corner);
+    bool tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top);
     void dragBarCorner();
     void endDraggingBarCorner();
 
-    void beginDraggingBar(int bar_index);
+    bool tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect);
     void dragBar();
     void endDraggingBar();
 
@@ -152,15 +154,13 @@ private:
     void updateAddNewBarOperation();
     void endAddNewBarOperation();
 
-    void drawZoneHighlight(const ImVec4& zone);
-
     bool commitBarEdits();
-
-    bool tryDragEdgeTo(Edge handle, float new_x, float new_y);
 
     auto getBarInteractionZoneRects(const ImVec4&) -> std::array<ImVec4, 5>;
 
     auto barToScreenRect(const Bar&) const -> ImVec4;
+    auto cornerRect(const ImVec4& rect, Edge left_or_right, Edge bottom_or_top) const -> ImVec4;
+    auto edgeRect(const ImVec4&, Edge) const -> ImVec4;
     auto leftEdgeRect(const ImVec4&) const -> ImVec4;
     auto topEdgeRect(const ImVec4&) const -> ImVec4;
     auto rightEdgeRect(const ImVec4&) const -> ImVec4;

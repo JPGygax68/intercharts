@@ -3,6 +3,8 @@
 #include <intercharts/bar_chart.h>
 
 
+// CLASS IMPLEMENTATION
+
 void Bar_chart::renderAndInteractWithValues()
 {
     auto wdl = ImGui::GetWindowDrawList();
@@ -15,7 +17,7 @@ void Bar_chart::renderAndInteractWithValues()
     for (const auto &bar : bars)
     {
         const auto rect = barToScreenRect(bar);
-        const auto interaction_rects = getBarInteractionZoneRects(rect); // TODO: get rid of this (see below)
+        // const auto interaction_rects = getBarInteractionZoneRects(rect); // TODO: get rid of this (see below)
 
         // Was there a click? (the "item" is the InvisibleButton representing the Chart)
         if (ImGui::IsItemActive())
@@ -36,10 +38,11 @@ void Bar_chart::renderAndInteractWithValues()
         }
         else
         {
-            if      (mouse_interaction == Mouse_interaction::Dragging_bar     ) endDraggingBar();
-            else if (mouse_interaction == Mouse_interaction::Dragging_bar_edge) endDraggingBarEdge();
-            else if (mouse_interaction == Mouse_interaction::Defining_new_bar ) endAddNewBarOperation(); // TODO: support cancelling with right mouse button?
-            highlightHoveredHotspot(interaction_rects); // TODO: replace with code that does not rely on hotspot rects
+            if      (mouse_interaction == Mouse_interaction::Dragging_bar       ) endDraggingBar();
+            else if (mouse_interaction == Mouse_interaction::Dragging_bar_edge  ) endDraggingBarEdge();
+            else if (mouse_interaction == Mouse_interaction::Dragging_bar_corner) endDraggingBarEdge();
+            else if (mouse_interaction == Mouse_interaction::Defining_new_bar   ) endAddNewBarOperation(); // TODO: support cancelling with right mouse button?
+            highlightHoveredHotspot(rect); // interaction_rects); // TODO: replace with code that does not rely on hotspot rects
         }
 
         drawBar(rect, bar_index == dragged_bar_index ? 0x800000FF : 0xFF0000FF);
@@ -77,55 +80,36 @@ bool Bar_chart::tryStartDragOperationOnExistingBar(int bar_index)
     auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
     auto rect = barToScreenRect(bars[bar_index]);
 
-    bool in_height_range = clicked_pos.y >= rect.y + 3 * ds && clicked_pos.y <= rect.w - 3 * ds;
-    bool in_width_range  = clicked_pos.x >= rect.x + 3 * ds && clicked_pos.y <= rect.z - 3 * ds;
+    if (tryBeginDraggingBarCorner(bar_index, rect, Edge::Left , Edge::Top   )) return true;
+    if (tryBeginDraggingBarCorner(bar_index, rect, Edge::Right, Edge::Top   )) return true;
+    if (tryBeginDraggingBarCorner(bar_index, rect, Edge::Right, Edge::Bottom)) return true;
+    if (tryBeginDraggingBarCorner(bar_index, rect, Edge::Left , Edge::Bottom)) return true;
 
-    // TODO: Make these into free query functions operating on ImVec4
-    bool on_left_edge   = abs(rect.x - clicked_pos.x) < 3 *ds && in_height_range;
-    bool on_right_edge  = abs(rect.z - clicked_pos.x) < 3 *ds && in_height_range;
-    bool on_bottom_edge = abs(rect.w - clicked_pos.y) < 3 *ds && in_width_range;
-    bool on_top_edge    = abs(rect.y - clicked_pos.y) < 3 *ds && in_width_range;
+    if (tryBeginDraggingBarEdge(bar_index, rect, Edge::Top   )) return true;
+    if (tryBeginDraggingBarEdge(bar_index, rect, Edge::Right )) return true;
+    if (tryBeginDraggingBarEdge(bar_index, rect, Edge::Bottom)) return true;
+    if (tryBeginDraggingBarEdge(bar_index, rect, Edge::Left  )) return true;
 
-    if      (on_left_edge  && on_top_edge   ) beginDraggingBarCorner(bar_index, Corner::Top_left    );
-    else if (on_right_edge && on_top_edge   ) beginDraggingBarCorner(bar_index, Corner::Top_right   );
-    else if (on_right_edge && on_bottom_edge) beginDraggingBarCorner(bar_index, Corner::Bottom_right);
-    else if (on_left_edge  && on_bottom_edge) beginDraggingBarCorner(bar_index, Corner::Bottom_left );
+    if (tryBeginDraggingBar(bar_index, rect)) return true;
 
-    else if (on_left_edge  ) beginDraggingBarEdge(bar_index, Edge::Left  );
-    else if (on_right_edge ) beginDraggingBarEdge(bar_index, Edge::Right );
-    else if (on_top_edge   ) beginDraggingBarEdge(bar_index, Edge::Top   );
-    else if (on_bottom_edge) beginDraggingBarEdge(bar_index, Edge::Bottom);
-    
-    else if (screenRectContainsPos(rect, clicked_pos)) beginDraggingBar(bar_index);
-    else return false;
-
-    return true;
+    return false;
 }
 
-void Bar_chart::highlightHoveredHotspot(const Hotspot_zone_list& zones)
+bool Bar_chart::highlightHoveredHotspot(const ImVec4& bar_rect) // const Hotspot_zone_list& zones)
 {
-    for (auto i = 0U; i < zones.size(); i++)
-    {
-        // TODO: support disabling each zone
-        const auto &rect = zones[i];
-        if (screenRectContainsPos(rect, ImGui::GetIO().MousePos)) drawZoneHighlight(rect);
-    }
-}
+    auto mouse_pos = ImGui::GetIO().MousePos;
 
-void Bar_chart::beginDraggingBarEdge(int bar_index, Edge edge)
-{
-    auto &bar = bars[bar_index];
+    if (highlightRectIfHovered(leftEdgeRect  (bar_rect), mouse_pos)) return true;
+    if (highlightRectIfHovered(rightEdgeRect (bar_rect), mouse_pos)) return true;
+    if (highlightRectIfHovered(topEdgeRect   (bar_rect), mouse_pos)) return true;
+    if (highlightRectIfHovered(bottomEdgeRect(bar_rect), mouse_pos)) return true;
 
-    if      (edge == Edge::Top   ) y_at_drag_start = bar.y2;
-    else if (edge == Edge::Bottom) y_at_drag_start = bar.y1;
-    if      (edge == Edge::Left  ) x_at_drag_start = bar.x1;
-    else if (edge == Edge::Right ) x_at_drag_start = bar.x2;
+    if (highlightRectIfHovered(cornerRect(bar_rect, Edge::Left , Edge::Bottom), mouse_pos)) return true;
+    if (highlightRectIfHovered(cornerRect(bar_rect, Edge::Right, Edge::Bottom), mouse_pos)) return true;
+    if (highlightRectIfHovered(cornerRect(bar_rect, Edge::Left , Edge::Top   ), mouse_pos)) return true;
+    if (highlightRectIfHovered(cornerRect(bar_rect, Edge::Right, Edge::Top   ), mouse_pos)) return true;
 
-    dragged_bar_index = bar_index;
-    dragged_edge = edge;
-    interaction_bar = bars[bar_index];
-
-    mouse_interaction = Mouse_interaction::Dragging_bar_edge;
+    return false;
 }
 
 void Bar_chart::dragBarEdge()
@@ -173,7 +157,6 @@ bool Bar_chart::tryDragEdgeTo(Edge edge, float new_x, float new_y)
     else if (edge == Edge::Top   ) event.bar.y2 = new_y;
 
     if (event_handler(event)) {
-        // bars[dragged_bar_index] = event.bar;
         interaction_bar = event.bar;
     }
 
@@ -188,36 +171,106 @@ void Bar_chart::endDraggingBarEdge()
     dragged_edge = Edge::None;
 }
 
-void Bar_chart::beginDraggingBarCorner(int bar_index, Corner corner)
+bool Bar_chart::tryBeginDraggingBarCorner(int bar_index, const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top)
 {
-    auto &bar = bars[bar_index];
+    auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
 
-    if      (corner == Corner::Bottom_left  || corner == Corner::Top_left    ) x_at_drag_start = bar.x1;
-    else if (corner == Corner::Bottom_right || corner == Corner::Top_right   ) x_at_drag_start = bar.x2;
-    if      (corner == Corner::Bottom_left  || corner == Corner::Bottom_right) y_at_drag_start = bar.y1;
-    else if (corner == Corner::Top_left     || corner == Corner::Top_right   ) y_at_drag_start = bar.y2;
+    if (screenRectContainsPos(cornerRect(bar_rect, left_or_right, bottom_or_top), clicked_pos)) {
+        auto &bar = bars[bar_index];
+        x_at_drag_start = left_or_right == Edge::Left   ? bar.x1 : bar.x2;
+        y_at_drag_start = bottom_or_top == Edge::Bottom ? bar.y1 : bar.y2;
+        dragged_bar_index = bar_index;
+        dragged_corner = Corner{ left_or_right, bottom_or_top };
+        interaction_bar = bar;
+        mouse_interaction = Mouse_interaction::Dragging_bar_corner;
+    }
+
+    return false;
 }
 
 void Bar_chart::dragBarCorner()
 {
+    auto& io = ImGui::GetIO();
+
+    auto mouse_pos = io.MousePos;
+    auto click_pos = io.MouseClickedPos[0];
+
+    float delta_x =   (mouse_pos.x - click_pos.x) / pixelsPerUnitHorz();
+    float delta_y = - (mouse_pos.y - click_pos.y) / pixelsPerUnitVert();
+
+    float new_x = roundXValue(x_at_drag_start + delta_x);
+    float new_y = roundYValue(y_at_drag_start + delta_y);
+
+    Event event;
+    event.type = Event::Reshaping_bar;
+    event.bar = interaction_bar;
+    event.bar_index = dragged_bar_index;
+    event.edges.set(dragged_corner.left_or_right);
+    event.edges.set(dragged_corner.bottom_or_top);
+    if (dragged_corner.left_or_right == Edge::Left  ) event.bar.x1 = new_x; else event.bar.x2 = new_x;
+    if (dragged_corner.bottom_or_top == Edge::Bottom) event.bar.y1 = new_y; else event.bar.y2 = new_y;
+
+    if (event_handler(event)) {
+        // bars[dragged_bar_index] = event.bar;
+        interaction_bar = event.bar;
+    }
+
+    // TODO...
 }
 
 void Bar_chart::endDraggingBarCorner()
 {
+    // TODO...
+
+    mouse_interaction = Mouse_interaction::None;
+    dragged_bar_index = -1;
+    dragged_corner = {};
 }
 
-void Bar_chart::beginDraggingBar(int bar_index)
+bool Bar_chart::tryBeginDraggingBarEdge(int bar_index, const ImVec4& bar_rect, Edge edge)
 {
-    mouse_interaction = Mouse_interaction::Dragging_bar;
+    auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
 
-    dragged_bar_index = bar_index;
+    if (screenRectContainsPos(edgeRect(bar_rect, edge), clicked_pos)) {
 
-    interaction_bar = bars[bar_index];
+        mouse_interaction = Mouse_interaction::Dragging_bar_edge;
+        dragged_bar_index = bar_index;
+        dragged_edge = edge;
+        interaction_bar = bars[bar_index];
 
-    // TODO: still needed now that we use copy of bar?
-    const auto& bar = bars[bar_index];
-    x_at_drag_start = bar.x1; 
-    y_at_drag_start = bar.y1;
+        // TODO: still needed now that we use copy of bar?
+        const auto& bar = bars[bar_index];
+        if      (edge == Edge::Left  ) x_at_drag_start = bar.x1;
+        else if (edge == Edge::Right ) x_at_drag_start = bar.x2;
+        else if (edge == Edge::Bottom) y_at_drag_start = bar.y1;
+        else if (edge == Edge::Top   ) y_at_drag_start = bar.y2;
+
+        return true;
+    }
+
+    return false;
+}
+
+bool Bar_chart::tryBeginDraggingBar(int bar_index, const ImVec4& bar_rect)
+{
+    auto clicked_pos = ImGui::GetIO().MouseClickedPos[0];
+
+    if (screenRectContainsPos(interiorRect(bar_rect), clicked_pos)) {
+        mouse_interaction = Mouse_interaction::Dragging_bar;
+
+        dragged_bar_index = bar_index;
+
+        interaction_bar = bars[bar_index];
+
+        // TODO: still needed now that we use copy of bar?
+        const auto& bar = bars[bar_index];
+        x_at_drag_start = bar.x1;
+        y_at_drag_start = bar.y1;
+
+        return true;
+    }
+
+    return false;
 }
 
 void Bar_chart::dragBar()
@@ -295,11 +348,15 @@ void Bar_chart::endAddNewBarOperation()
     mouse_interaction = Mouse_interaction::None;
 }
 
-void Bar_chart::drawZoneHighlight(const ImVec4 &zone)
+bool Bar_chart::highlightRectIfHovered(const ImVec4 &rect, const ImVec2& mouse_pos)
 {
-    auto fdl = ImGui::GetForegroundDrawList();
+    if (screenRectContainsPos(rect, mouse_pos)) {
+        auto fdl = ImGui::GetForegroundDrawList();
+        fdl->AddRectFilled({ rect.x, rect.y }, { rect.z, rect.w }, 0x8080FFFF); // TODO: color constant or setting
+        return true;
+    }
 
-    fdl->AddRectFilled({zone.x, zone.y}, {zone.z, zone.w}, 0x8080FFFF); // TODO: color constant or setting
+    return false;
 }
 
 bool Bar_chart::commitBarEdits()
@@ -369,6 +426,48 @@ auto Bar_chart::barToScreenRect(const Bar &bar) const -> ImVec4
         pa.x + bar.x2 * ppux, // z = right
         pa.w - bar.y1 * ppuy, // w = bottom
     };
+}
+
+auto Bar_chart::cornerRect(const ImVec4& bar_rect, Edge left_or_right, Edge bottom_or_top) const -> ImVec4
+{
+    ImVec4 rect;
+
+    auto ds = dpiScalingFactor();
+
+    if (left_or_right == Edge::Left) {
+        rect.x = bar_rect.x - ds * 3;
+        rect.z = bar_rect.x + ds * 3;
+    }
+    else if (left_or_right == Edge::Right) {
+        rect.x = bar_rect.z - ds * 3;
+        rect.z = bar_rect.z + ds * 3;
+    }
+    else assert(false);
+
+    if (bottom_or_top == Edge::Top) {
+        rect.y = bar_rect.y - ds * 3;
+        rect.w = bar_rect.y + ds * 3;
+    }
+    else if (bottom_or_top == Edge::Bottom) {
+        rect.y = bar_rect.w - ds * 3;
+        rect.w = bar_rect.w + ds * 3;
+    }
+    else assert(false);
+
+    return rect;
+}
+
+auto Bar_chart::edgeRect(const ImVec4& rect, Edge edge) const -> ImVec4
+{
+    switch (edge) {
+    case Edge::Left: return leftEdgeRect(rect);
+    case Edge::Right: return rightEdgeRect(rect);
+    case Edge::Bottom: return bottomEdgeRect(rect);
+    case Edge::Top: return topEdgeRect(rect);
+    }
+
+    assert(false);
+    return {};
 }
 
 auto Bar_chart::leftEdgeRect(const ImVec4 &rect) const -> ImVec4
